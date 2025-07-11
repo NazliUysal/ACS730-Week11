@@ -22,7 +22,7 @@ terraform {
     }
   }
 }
- 
+
 provider "aws" {
   region = "us-west-2"
 }
@@ -45,10 +45,31 @@ data "aws_ami" "ubuntu" {
   owners = ["099720109477"] # Canonical
 }
 
+resource "aws_security_group" "web-sg" {
+  name        = "web-sg"
+  description = "Allow HTTP traffic from specific IP range"
+
+  ingress {
+    description = "Allow HTTP from corporate subnet"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["203.0.113.0/24"] # Replace with your trusted subnet
+  }
+
+  egress {
+    description = "Allow all outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
 resource "aws_instance" "web" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = "t2.micro"
-  vpc_security_group_ids = [aws_security_group.web-sg.id]
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = "t2.micro"
+  vpc_security_group_ids      = [aws_security_group.web-sg.id]
 
   user_data = <<-EOF
               #!/bin/bash
@@ -58,19 +79,17 @@ resource "aws_instance" "web" {
               echo "Hello World" > /var/www/html/index.html
               systemctl restart apache2
               EOF
-}
 
-resource "aws_security_group" "example" {
-  name        = "example"
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
+  }
 
-  ingress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+  root_block_device {
+    encrypted = true
   }
 }
-
 
 output "web-address" {
   value = "${aws_instance.web.public_dns}:8080"
